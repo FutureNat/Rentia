@@ -1,0 +1,111 @@
+.advertisingTabs{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 24px}.advertisingTabs button{padding:12px 18px;border:1px solid #28495b;border-radius:10px;background:#0a1926;color:#9bb3c3;font:inherit;font-weight:700;cursor:pointer}.advertisingTabs button.active{background:#103638;color:#59e1d0;border-color:#24877d}.reportDetails{display:grid;gap:24px;margin-top:26px}.reportDetailPanel{padding:24px;border:1px solid #233f51;border-radius:16px;background:#0b1926}.reportDetailPanel h3{margin:8px 0 12px;font-size:22px}.reportDetailPanel p{color:#90aabc;font-size:14px;line-height:1.6}.reportDetailScroll{overflow:auto}.reportDetailTable{width:100%;border-collapse:collapse;font-size:14px;text-align:left}.reportDetailTable th{font-size:12px;text-transform:uppercase;color:#819bac;padding:14px 12px;background:#0a1722;white-space:nowrap}.reportDetailTable td{padding:15px 12px;border-bottom:1px solid #213748;color:#cfe1ec;vertical-align:top}.reportDetailTable td:not(:first-child){white-space:nowrap}.reportDetailTable small{display:block;color:#819bac;margin-top:6px}.reportDetailTable a{color:#64ded3}.reportDetailCards,.productAdsMetrics{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}.reportDetailCards article,.productAdsMetrics article{padding:18px;border:1px solid #274355;border-radius:12px;background:#0b202d;display:grid;gap:8px}.reportDetailCards span,.productAdsMetrics span{font-size:14px;color:#91acbc}.reportDetailCards strong,.productAdsMetrics strong{font-size:25px;color:#e3f1f7}.reportDetailCards small{font-size:13px;color:#91acbc;line-height:1.5}.productAdsAccount{display:grid;gap:8px;color:#a0bccb;margin-bottom:18px;max-width:480px}.productAdsAccount select,.productAdsTools input,.refundFields input{padding:12px;border:1px solid #315266;border-radius:10px;background:#071421;color:#deedf5;font:inherit}.productAdsTools{display:flex;justify-content:space-between;gap:18px;align-items:end;margin:24px 0}.productAdsTools label{display:grid;gap:8px;color:#90aabc}.productAds .outline{display:inline-flex;align-items:center;justify-content:center;text-decoration:none;min-height:44px}.refundFields{display:grid;grid-template-columns:1fr 1fr;gap:12px}.refundFields label{display:grid;gap:8px;color:#a7bcc8;font-size:14px}.refundFields input{width:100%;min-width:0}.refundConfirm{display:flex;align-items:start;gap:10px;font-size:14px;line-height:1.6;margin:18px 0}.refundConfirm input{margin-top:5px;flex:none;width:18px;height:18px;accent-color:#20cabc}.refundActions{display:flex;gap:10px;flex-wrap:wrap}.reportRefundList{list-style:none;padding:0;margin:0}.reportRefundList li{padding:14px 0;border-top:1px solid #253c4c;display:flex;justify-content:space-between;gap:18px;font-size:14px}.reportRefundList a{color:#62dcd0}.reportRefundList small{display:block;color:#91a9b8;margin-top:6px}.productAdsMetrics{margin:22px 0}button:disabled{cursor:not-allowed}.reportDetailPanel .reportWarning{margin:16px 0 0}@media(max-width:800px){.reportDetailCards,.productAdsMetrics{grid-template-columns:repeat(2,minmax(0,1fr))}.reportDetailPanel{padding:18px}}@media(max-width:520px){.reportDetailCards,.productAdsMetrics,.refundFields{grid-template-columns:1fr}.productAdsTools{align-items:stretch;flex-direction:column}.productAdsTools input{width:100%}.reportRefundList li{flex-direction:column}}@media print{.reportDetailPanel{break-inside:avoid;background:white!important;color:black!important}.reportDetailTable td,.reportDetailTable th{color:black!important}.reportDetailScroll{overflow:visible}.reportDetailCards strong,.reportDetailCards span,.reportDetailCards small{color:black!important}.advertisingTabs{display:none}}
+/* Wide report tables must scroll inside their panels, never resize the app grid. */
+.reportsPage,
+.reportDetails,
+.reportDetailPanel,
+.reportDetailScroll {
+  min-width: 0;
+  max-width: 100%;
+}
+.reportDetails {
+  grid-template-columns: minmax(0, 1fr);
+}
+.reportDetailScroll {
+  display: block;
+  width: 100%;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+}
+.reportDetailScroll:focus-visible {
+  outline: 2px solid var(--cyan);
+  outline-offset: 4px;
+  border-radius: 6px;
+}
+.reportDetailTable td:first-child {
+  min-width: 11rem;
+  max-width: 24rem;
+  overflow-wrap: anywhere;
+}
+.reportDetailTable small {
+  max-width: 22rem;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.reportDetailCards > article,
+.productAdsMetrics > article {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.reportsPage .productAdsTools {
+  flex-wrap: wrap;
+}
+.reportsPage .productAdsTools label {
+  min-width: 0;
+  max-width: 100%;
+}
+.reportsPage .productAdsTools input,
+.reportsPage .productAdsTools select {
+  min-width: 0;
+  max-width: 100%;
+}
+.reportPagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin: 24px 0;
+}
+.reportPagination > span {
+  color: #a7bdca;
+  font-size: 14px;
+  line-height: 1.5;
+}
+.reportPageActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.reportPageActions .outline {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+}
+@media (max-width: 520px) {
+  .reportPagination {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .reportPageActions {
+    width: 100%;
+  }
+  .reportPageActions button {
+    flex: 1;
+  }
+}
+@media print {
+  .reportDetails {
+    display: block;
+  }
+  .reportDetailPanel {
+    margin-top: 20px;
+  }
+  .reportDetailScroll {
+    overflow: visible;
+  }
+  .reportDetailTable {
+    table-layout: fixed;
+    font-size: 9px;
+  }
+  .reportDetailTable th,
+  .reportDetailTable td,
+  .reportDetailTable td:not(:first-child) {
+    min-width: 0;
+    padding: 6px 4px;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+  .reportPagination {
+    display: none;
+  }
+}

@@ -1,0 +1,23 @@
+.accountMenuAnchor{position:relative;flex-shrink:0}
+.accountMenuAnchor .appAvatar{overflow:hidden}
+.accountMenuAnchor .appAvatar img{width:100%;height:100%;object-fit:cover}
+.panelToolbar .accountProfileMenu{width:300px;max-width:calc(100vw - 32px);padding:16px;gap:14px;text-align:left}
+.accountProfileIdentity{display:flex;flex-direction:column;gap:5px;min-width:0}
+.accountProfileIdentity b{font-size:16px;color:#edf6fb;overflow-wrap:anywhere}
+.accountProfileMenu .accountProfileIdentity span{font-size:13px;color:#90aabd;overflow-wrap:anywhere}
+.accountProfileMenu .accountSettingsAction{display:flex;align-items:center;gap:11px;width:100%;padding:12px;border:1px solid #236159;border-radius:10px;background:#0e302f;color:#c2f2e8;text-align:left;cursor:pointer}
+.accountSettingsAction svg{flex:0 0 21px;width:21px;height:21px;color:#45ddc9}
+.accountProfileMenu .accountSettingsAction>span{display:flex;flex-direction:column;gap:5px;white-space:normal;color:inherit}
+.accountSettingsAction strong{font-size:14px;font-weight:700}
+.accountSettingsAction small{font-size:12px;color:#a0beb9;font-weight:400}
+.accountSettingsAction:hover{background:#14413d;border-color:#38a797}
+.accountSettingsAction:focus-visible,.sidebarAccount:focus-visible{outline:2px solid #60e6d3;outline-offset:3px}
+.accountStoreContext{display:flex;flex-direction:column;gap:6px;padding:3px 0}
+.accountStoreContext small{font-size:12px;letter-spacing:.06em;color:#708da4}
+.accountProfileMenu .accountStoreContext span{font-size:14px;color:#c3d6e3;overflow-wrap:anywhere}
+.accountProfileMenu .logoutButton{margin-top:0!important;padding-top:12px!important;font-size:14px!important}
+.sidebarAccount:disabled,.accountSettingsAction:disabled{opacity:.6;cursor:wait}
+.rentiaAccountModal{max-width:calc(100vw - 32px)!important;max-height:calc(100dvh - 32px)!important}
+.rentiaAccountModal .cl-cardBox{max-width:100%;max-height:calc(100dvh - 32px)}
+.rentiaAccountModal .cl-pageScrollBox{scrollbar-width:thin;scrollbar-color:#294357 transparent}
+@media(max-width:600px){.rentiaAccountModal{max-width:calc(100vw - 16px)!important;max-height:calc(100dvh - 16px)!important}.rentiaAccountModal .cl-cardBox{max-height:calc(100dvh - 16px)}.panelToolbar .accountProfileMenu{top:calc(100% + 8px);right:0;left:auto}}

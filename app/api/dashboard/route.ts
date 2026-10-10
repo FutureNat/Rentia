@@ -1,0 +1,51 @@
+import {NextResponse} from 'next/server';
+import {analyticsWindow,getAccount,getDashboardData,getIntegrations,getMetaAnalyticsData} from '../../../db/database';
+import type {CostRule} from '../../../lib/cost-engine';
+import {analyticsRangeFromUrl} from '../../../lib/analytics-range';
+import {getRentiaUser} from '../../../lib/session';
+import {costSettings} from '../../../lib/order-calculations';
+import {summarizeOrders} from '../../../lib/order-summary';
+import {salesChannels} from '../../../lib/sales-channels';
+import {getMeliAds} from '../../../lib/meli-ads';
+
+export async function GET(request:Request) {
+  const user=await getRentiaUser();
+  if(!user)return NextResponse.json({error:'unauthorized'},{status:401});
+  const url=new URL(request.url),{days,range}=analyticsRangeFromUrl(url);
+  const requestedOffset=Number(url.searchParams.get('offset')||0);
+  const offset=!range&&Number.isSafeInteger(requestedOffset)&&requestedOffset>=0?requestedOffset:0;
+  const [data,meta,account,integrations]=await Promise.all([getDashboardData(user.id,days,offset,range),getMetaAnalyticsData(user.id,days,offset,range),getAccount(user.id),getIntegrations(user.id)]);
+  const summary=await summarizeOrders(data.orders,costSettings(data.settings as Record<string,unknown>|null),data.costRules as unknown as CostRule[],days,data.paidTotals,Boolean(Number(data.settings?.onboarding_complete||0)),new Date(analyticsWindow(days,offset,range).until));
+  const {orders:paidOrders,revenue,productCost,shipping,commissions,taxes,additional,refundLoss}=summary.totals;
+  const meliAds=await getMeliAds(user.id,days,offset,range);
+  const meliAdsComparable=Boolean(meliAds.selected?.last_completed_at)&&meliAds.selected?.currency===(account?.currency||'ARS');
+  const meliAdSpend=meliAds.summary.spend;
+  const profitBeforeAds=revenue-productCost-shipping-commissions-taxes-additional-refundLoss;
+  const adSpend=Number(meta.summary.spend||0),metaReportedRevenue=Number(meta.summary.purchase_value||0),metaPurchases=Number(meta.summary.purchases||0);
+  const metaCurrency=String(meta.selected?.currency||account?.currency||'ARS');
+  const adSpendComparable=Boolean(meta.selected)&&metaCurrency===(account?.currency||'ARS');
+  const totalAdSpend=(adSpendComparable?adSpend:0)+(meliAdsComparable?meliAdSpend:0);
+  const profit=profitBeforeAds-totalAdSpend;
+  let externalRevenue=0,externalOrders=0;
+  const timelineMap=summary.timeline;
+  for(const row of data.externalRevenue) {
+    const date=String(row.revenue_date),entryRevenue=Number(row.revenue||0),entryOrders=Number(row.order_count||0);
+    externalRevenue+=entryRevenue;externalOrders+=entryOrders;
+    const point=timelineMap.get(date)||{date,orders:0,storeRevenue:0,externalRevenue:0,profit:0,adSpend:0,operatingCosts:0};point.orders+=entryOrders;point.externalRevenue+=entryRevenue;timelineMap.set(date,point);
+  }
+  for(const row of meta.daily) {
+    const date=String(row.date),point=timelineMap.get(date)||{date,orders:0,storeRevenue:0,externalRevenue:0,profit:0,adSpend:0,operatingCosts:0};
+    point.adSpend+=Number(row.spend||0);if(adSpendComparable)point.profit-=Number(row.spend||0);timelineMap.set(date,point);
+  }
+  const totalRevenue=revenue+externalRevenue,totalOrders=paidOrders+externalOrders,netRevenue=revenue-shipping-commissions-taxes;
+  for(const row of meliAds.daily) {
+    if(!meliAdsComparable)continue;
+    const date=row.date,point=timelineMap.get(date)||{date,orders:0,storeRevenue:0,externalRevenue:0,profit:0,adSpend:0,operatingCosts:0};point.adSpend+=row.spend;point.profit-=row.spend;timelineMap.set(date,point);
+    const series=summary.channelTimelines.mercadolibre||(summary.channelTimelines.mercadolibre=[]),channelPoint=series.find(p=>p.date===date);
+    if(channelPoint){channelPoint.adSpend+=row.spend;channelPoint.profit-=row.spend;}else series.push({date,orders:0,storeRevenue:0,externalRevenue:0,profit:-row.spend,adSpend:row.spend,operatingCosts:0});
+  }
+  summary.channelTimelines.mercadolibre?.sort((a,b)=>a.date.localeCompare(b.date));
+  const channels=[...salesChannels(summary.channels,integrations.results).map(row=>row.provider==='mercadolibre'?{...row,profitBeforeAds:row.profit,profit:row.profit===null?null:row.profit-(meliAdsComparable?meliAdSpend:0),adSpend:meliAdsComparable?meliAdSpend:undefined,adsCoverage:meliAdsComparable&&meliAds.coverage.complete}:row),{provider:'external',label:'Facturación externa',orders:externalOrders,revenue:externalRevenue,netRevenue:externalRevenue,profit:null,aov:externalOrders?externalRevenue/externalOrders:0,costCoverage:false}];
+  const exchangeRate=data.exchangeRate?{...data.exchangeRate,effective_rate:Number(data.exchangeRate.base_rate||0)*(1+Number(data.exchangeRate.adjustment_percent||0)/100)}:null;
+  return NextResponse.json({metrics:{refundLoss,meliAdSpend,totalAdSpend,meliAdsComparable,revenue,externalRevenue,totalRevenue,profitBeforeAds,profit,margin:revenue?profit/revenue*100:0,orders:paidOrders,externalOrders,totalOrders,aov:paidOrders?revenue/paidOrders:0,totalAov:totalOrders?totalRevenue/totalOrders:0,netRevenue,productCost,shipping,commissions,taxes,additional,adSpend,metaReportedRevenue,metaPurchases,reportedRoas:adSpend?metaReportedRevenue/adSpend:0,blendedRoas:totalAdSpend?revenue/totalAdSpend:0,cpa:metaPurchases?adSpend/metaPurchases:0,adSpendComparable,metaCurrency},meliAds,ads:{connected:Boolean(meta.selected),selected:meta.selected,sync:meta.sync},orders:summary.latest,paymentMethods:data.paymentMethods,products:data.products,sync:data.sync,metaTimeline:meta.daily.map(row=>({date:String(row.date),orders:0,storeRevenue:0,externalRevenue:0,profit:0,adSpend:Number(row.spend||0),operatingCosts:0})),timeline:[...timelineMap.values()].sort((a,b)=>a.date.localeCompare(b.date)),channelTimelines:summary.channelTimelines,channels,exchangeRate,quality:summary.quality});
+}

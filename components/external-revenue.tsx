@@ -1,0 +1,75 @@
+'use client';
+
+import {useEffect,useState} from 'react';
+import ThemedSelect from './themed-select';
+
+type Entry={revenue_date:string;order_count:number;revenue:number};
+type Props={onChanged:()=>Promise<unknown>;canManage:boolean;money:(value:number,currency?:string)=>string};
+
+export default function ExternalRevenue({onChanged,canManage,money}:Props) {
+  const today=new Intl.DateTimeFormat('en-CA',{timeZone:'America/Argentina/Buenos_Aires',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
+  const currentMonth=today.slice(0,7);
+  const currentYear=Number(currentMonth.slice(0,4));
+  const [month,setMonth]=useState(currentMonth);
+  const [rows,setRows]=useState<Entry[]>([]);
+  const [loading,setLoading]=useState(true);
+  const [saving,setSaving]=useState(false);
+  const [loadFailed,setLoadFailed]=useState(false);
+  const [retry,setRetry]=useState(0);
+  const [dirty,setDirty]=useState(false);
+  const [state,setState]=useState('');
+  useEffect(()=>{
+    const controller=new AbortController();
+    setLoading(true);setLoadFailed(false);setState('');
+    fetch(`/api/finance/external-revenue?month=${month}`,{signal:controller.signal})
+      .then(async response=>{if(!response.ok)throw new Error('load');return response.json() as Promise<{entries?:Entry[]}>;})
+      .then(data=>{
+        if(controller.signal.aborted)return;
+        const values=new Map<string,Entry>((data.entries||[]).map((entry:Entry)=>[entry.revenue_date,entry]));
+        const [year,number]=month.split('-').map(Number);
+        const days=new Date(Date.UTC(year,number,0)).getUTCDate();
+        setRows(Array.from({length:days},(_,index)=>{const revenueDate=`${month}-${String(index+1).padStart(2,'0')}`;return values.get(revenueDate)||{revenue_date:revenueDate,order_count:0,revenue:0};}));
+        setDirty(false);setLoading(false);
+      }).catch(()=>{if(!controller.signal.aborted){setRows([]);setLoadFailed(true);setState('No pudimos cargar este mes. Reintentá para ver y editar sus valores.');setLoading(false);}});
+    return()=>controller.abort();
+  },[month,retry]);
+  function selectMonth(next:string) {
+    if(saving||next===month)return;
+    if(dirty&&!window.confirm('Tenés cambios sin guardar en este mes. ¿Querés cambiar de mes y descartarlos?'))return;
+    setLoading(true);setDirty(false);setMonth(next);
+  }
+  function update(index:number,field:'order_count'|'revenue',value:string) {
+    if(!canManage)return;
+    setDirty(true);setState('');
+    setRows(current=>current.map((row,rowIndex)=>rowIndex===index?{...row,[field]:Math.max(0,Number(value||0))}:row));
+  }
+  const totalOrders=rows.reduce((sum,row)=>sum+Number(row.order_count||0),0);
+  const totalRevenue=rows.reduce((sum,row)=>sum+Number(row.revenue||0),0);
+  async function save() {
+    if(!canManage||loading||saving||loadFailed)return;
+    if(rows.some(row=>!Number.isFinite(row.revenue)||!Number.isInteger(row.order_count))){setState('Revisá los importes y las cantidades: las órdenes deben ser números enteros.');return;}
+    setSaving(true);setState('Guardando…');
+    try{
+      const response=await fetch('/api/finance/external-revenue',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({month,entries:rows.map(row=>({revenueDate:row.revenue_date,orderCount:row.order_count,revenue:row.revenue,currency:'ARS'}))})});
+      if(!response.ok)throw new Error('save');
+      setDirty(false);setState('Facturación guardada.');
+      await onChanged().catch(()=>{});
+    }catch{setState('No pudimos guardar los cambios. Conservamos los valores para que puedas reintentar.');}
+    finally{setSaving(false);}
+  }
+  const monthNumber=month.slice(5,7),selectedYear=month.slice(0,4);
+  const monthOptions=Array.from({length:12},(_,index)=>({value:String(index+1).padStart(2,'0'),label:new Intl.DateTimeFormat('es-AR',{month:'long'}).format(new Date(2020,index,1))})).filter(option=>selectedYear!==String(currentYear)||option.value<=currentMonth.slice(5,7));
+  const yearOptions=Array.from({length:Math.max(1,currentYear-2000+1)},(_,index)=>({value:String(currentYear-index),label:String(currentYear-index)}));
+  return <section className="financePage">
+    <div className="financeHeading"><div><span className="muted">VENTAS FUERA DE TUS CANALES</span><h2>Facturación externa</h2><p>Registrá ventas de locales, mayoristas u otros canales, incluso de meses anteriores. Se suman a la facturación total; la ganancia queda pendiente hasta asociar sus costos.</p></div>
+      <div className="financePeriod"><ThemedSelect label="Mes" value={monthNumber} options={monthOptions} disabled={saving} onChange={value=>selectMonth(`${selectedYear}-${value}`)}/><ThemedSelect label="Año" value={selectedYear} options={yearOptions} disabled={saving} onChange={value=>selectMonth(`${value}-${value===String(currentYear)&&monthNumber>currentMonth.slice(5,7)?currentMonth.slice(5,7):monthNumber}`)}/></div>
+    </div>
+    <div className="financeSummary"><article><span>Órdenes del mes</span><b>{loading||loadFailed?'—':totalOrders}</b></article><article><span>Facturación externa</span><b>{loading||loadFailed?'—':money(totalRevenue)}</b></article><article><span>Ticket promedio</span><b>{loading||loadFailed?'—':money(totalOrders?totalRevenue/totalOrders:0)}</b></article></div>
+    {loading?<div className="financeLoading">Cargando mes…</div>:loadFailed?<div className="financeLoadError" role="alert"><span>{state}</span><button type="button" className="outline" onClick={()=>setRetry(value=>value+1)}>Reintentar</button></div>:<div className="externalRevenueTable"><div className="externalRevenueRow externalRevenueHead"><span>Fecha</span><span>Día</span><span>Órdenes</span><span>Facturación · ARS</span></div>{rows.map((row,index)=>{
+      const future=row.revenue_date>today;
+      const dayName=new Intl.DateTimeFormat('es-AR',{weekday:'long'}).format(new Date(`${row.revenue_date}T12:00:00`));
+      return <div className={`externalRevenueRow ${future?'future':''}`} key={row.revenue_date}><b>{new Intl.DateTimeFormat('es-AR',{day:'2-digit',month:'2-digit',year:'numeric'}).format(new Date(`${row.revenue_date}T12:00:00`))}</b><span>{dayName}</span><input type="number" min="0" step="1" inputMode="numeric" aria-label={`Órdenes del ${row.revenue_date}`} value={row.order_count||''} onChange={event=>update(index,'order_count',event.target.value)} disabled={future||saving||!canManage} placeholder="0"/><div className="tableMoneyInput"><span>$</span><input type="number" min="0" step="0.01" inputMode="decimal" aria-label={`Facturación del ${row.revenue_date} en ARS`} value={row.revenue||''} onChange={event=>update(index,'revenue',event.target.value)} disabled={future||saving||!canManage} placeholder="0"/></div></div>;
+    })}</div>}
+    <div className="financeActions"><span role="status">{loadFailed?'':state||(dirty?'Tenés cambios sin guardar.':'Podés completar o corregir cualquier mes anterior.')}</span><button className="button" onClick={()=>void save()} disabled={loading||saving||loadFailed||!canManage}>{saving?'Guardando…':'Guardar cambios'}</button></div>
+  </section>;
+}
