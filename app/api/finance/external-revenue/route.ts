@@ -1,6 +1,7 @@
-import { NextResponse } from 'next/server';
+import { z } from 'zod';
 import { getExternalRevenue, saveExternalRevenueMonth } from '../../../../db/database';
-import { canManageRentia, getRentiaUser } from '../../../../lib/session';
+import { HttpError, route } from '../../../../server/http/route';
+import { field } from '../../../../server/http/fields';
 
 function monthRange(month:string) {
   if (!/^\d{4}-\d{2}$/.test(month)) return null;
@@ -10,31 +11,27 @@ function monthRange(month:string) {
   return {from:`${month}-01`,to:`${month}-${String(lastDay).padStart(2,'0')}`,lastDay};
 }
 
-export async function GET(request:Request) {
-  const user=await getRentiaUser();
-  if (!user) return NextResponse.json({error:'unauthorized'},{status:401});
-  const month=new URL(request.url).searchParams.get('month')||new Date().toISOString().slice(0,7);
-  const range=monthRange(month);
-  if (!range) return NextResponse.json({error:'invalid_month'},{status:400});
-  const result=await getExternalRevenue(user.id,range.from,range.to);
-  return NextResponse.json({month,days:range.lastDay,entries:result.results});
-}
+const RevenueEntry=z.object({
+  revenueDate:field(value=>String(value||'')),
+  orderCount:field(value=>Math.trunc(Number(value||0))).pipe(z.number().min(0)),
+  revenue:field(value=>Number(value||0)).pipe(z.number().min(0)),
+  currency:field(value=>String(value||'ARS')),
+});
 
-export async function PUT(request:Request) {
-  const user=await getRentiaUser();
-  if (!user) return NextResponse.json({error:'unauthorized'},{status:401});
-  if (!canManageRentia(user)) return NextResponse.json({error:'forbidden'},{status:403});
-  const body=await request.json() as {month?:string;entries?:Array<{revenueDate?:string;orderCount?:number;revenue?:number;currency?:string}>};
-  const range=monthRange(body.month||'');
-  if (!range||!Array.isArray(body.entries)||body.entries.length>31) return NextResponse.json({error:'invalid_data'},{status:400});
-  const entries=body.entries.map(entry=>({
-    revenueDate:String(entry.revenueDate||''),
-    orderCount:Math.trunc(Number(entry.orderCount||0)),
-    revenue:Number(entry.revenue||0),
-    currency:String(entry.currency||'ARS'),
-  }));
-  const invalid=entries.some(entry=>!entry.revenueDate.startsWith(`${body.month}-`)||entry.orderCount<0||entry.revenue<0||!Number.isFinite(entry.orderCount)||!Number.isFinite(entry.revenue));
-  if (invalid) return NextResponse.json({error:'invalid_entries'},{status:400});
-  await saveExternalRevenueMonth(user.id,body.month!,entries);
-  return NextResponse.json({ok:true});
-}
+const RevenueBody=z.object({month:z.string(),entries:z.array(z.unknown()).max(31)});
+
+export const GET=route({},async({user,url})=>{
+  const month=url.searchParams.get('month')||new Date().toISOString().slice(0,7);
+  const range=monthRange(month);
+  if (!range) throw new HttpError(400,'invalid_month');
+  const result=await getExternalRevenue(user.id,range.from,range.to);
+  return {month,days:range.lastDay,entries:result.results};
+});
+
+export const PUT=route({access:'manager',body:RevenueBody,invalidBody:'invalid_data'},async({user,body})=>{
+  if (!monthRange(body.month)) throw new HttpError(400,'invalid_data');
+  const parsed=z.array(RevenueEntry).safeParse(body.entries);
+  if (!parsed.success||parsed.data.some(entry=>!entry.revenueDate.startsWith(`${body.month}-`))) throw new HttpError(400,'invalid_entries');
+  await saveExternalRevenueMonth(user.id,body.month,parsed.data);
+  return {ok:true};
+});

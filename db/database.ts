@@ -190,20 +190,6 @@ export async function saveTiendanubePlan(userId:string,planName:string|null) {
     .bind(userId,planName,now).run();
 }
 
-export async function savePagoNubePayoutDays(userId:string,days:number|null) {
-  await ensureSchema();
-  const now=new Date().toISOString();
-  await database().prepare("INSERT INTO store_settings (user_id,pago_nube_payout_days,updated_at) VALUES (?,?,?) ON CONFLICT(user_id) DO UPDATE SET pago_nube_payout_days=excluded.pago_nube_payout_days,updated_at=excluded.updated_at")
-    .bind(userId,days,now).run();
-}
-
-export async function savePagoNubePlanOverride(userId:string,plan:string|null) {
-  await ensureSchema();
-  const now=new Date().toISOString();
-  await database().prepare("INSERT INTO store_settings (user_id,pago_nube_plan_override,updated_at) VALUES (?,?,?) ON CONFLICT(user_id) DO UPDATE SET pago_nube_plan_override=excluded.pago_nube_plan_override,updated_at=excluded.updated_at")
-    .bind(userId,plan,now).run();
-}
-
 export async function saveChannels(userId:string, channels:string[]) {
   await ensureSchema();
   const now = new Date().toISOString();
@@ -211,11 +197,12 @@ export async function saveChannels(userId:string, channels:string[]) {
     .bind(userId,channels.join(','),now).run();
 }
 
-export async function saveCosts(input:{userId:string;shipping:number;shippingMode:string;fees:number;taxes:number}) {
+// One statement, so costs and Pago Nube options are saved together or not at all.
+export async function saveCostSettings(userId:string,input:{shipping:number;shippingMode:'actual'|'average_only';fees:number;taxes:number;pagoNubePayoutDays:number|null;pagoNubePlan:string|null}) {
   await ensureSchema();
   const now = new Date().toISOString();
-  await database().prepare("INSERT INTO store_settings (user_id,shipping_cost_ars,shipping_mode,commission_percent,tax_percent,onboarding_complete,updated_at) VALUES (?,?,?,?,?,1,?) ON CONFLICT(user_id) DO UPDATE SET shipping_cost_ars=excluded.shipping_cost_ars,shipping_mode=excluded.shipping_mode,commission_percent=excluded.commission_percent,tax_percent=excluded.tax_percent,onboarding_complete=1,updated_at=excluded.updated_at")
-    .bind(input.userId,input.shipping,input.shippingMode,input.fees,input.taxes,now).run();
+  await database().prepare("INSERT INTO store_settings (user_id,shipping_cost_ars,shipping_mode,commission_percent,tax_percent,pago_nube_payout_days,pago_nube_plan_override,onboarding_complete,updated_at) VALUES (?,?,?,?,?,?,?,1,?) ON CONFLICT(user_id) DO UPDATE SET shipping_cost_ars=excluded.shipping_cost_ars,shipping_mode=excluded.shipping_mode,commission_percent=excluded.commission_percent,tax_percent=excluded.tax_percent,pago_nube_payout_days=excluded.pago_nube_payout_days,pago_nube_plan_override=excluded.pago_nube_plan_override,onboarding_complete=1,updated_at=excluded.updated_at")
+    .bind(userId,input.shipping,input.shippingMode,input.fees,input.taxes,input.pagoNubePayoutDays,input.pagoNubePlan,now).run();
 }
 
 export async function createOAuthState(userId:string, provider:string, state:string) {

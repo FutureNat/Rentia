@@ -1,33 +1,28 @@
-import { NextResponse } from 'next/server';
+import { z } from 'zod';
 import { getExchangeRateSettings, saveExchangeRateSettings } from '../../../../db/database';
-import { canManageRentia, getRentiaUser } from '../../../../lib/session';
+import { route } from '../../../../server/http/route';
+import { field } from '../../../../server/http/fields';
 import { defaultRateSettings } from '../../../../lib/exchange-rates';
 import { getLiveRates } from '../../../../lib/exchange-rate-provider';
 
-const allowedTypes=new Set(['official','blue','mep','manual']);
+const RateBody=z.object({
+  rateType:z.enum(['official','blue','mep','manual']),
+  baseRate:z.coerce.number().min(0),
+  adjustmentPercent:field(value=>Number(value||0)).pipe(z.number().gt(-100).max(500)),
+}).refine(body=>body.rateType!=='manual'||body.baseRate>0,{path:['baseRate']});
 
-export async function GET() {
-  const user=await getRentiaUser();
-  if (!user) return NextResponse.json({error:'unauthorized'},{status:401});
+export const GET=route({},async({user})=>{
   try {
     const settings=await getExchangeRateSettings(user.id);
-    return NextResponse.json({settings:settings||defaultRateSettings,live:await getLiveRates(settings)},{headers:{'cache-control':'private, no-store'}});
+    return Response.json({settings:settings||defaultRateSettings,live:await getLiveRates(settings)},{headers:{'cache-control':'private, no-store'}});
   }catch(error){
     console.error('Exchange settings unavailable',error);
-    return NextResponse.json({error:'rates_unavailable'},{status:503});
+    return Response.json({error:'rates_unavailable'},{status:503});
   }
-}
+});
 
-export async function PUT(request:Request) {
-  const user=await getRentiaUser();
-  if (!user) return NextResponse.json({error:'unauthorized'},{status:401});
-  if (!canManageRentia(user)) return NextResponse.json({error:'forbidden'},{status:403});
-  const body=await request.json().catch(()=>null) as {rateType?:string;baseRate?:number;adjustmentPercent?:number}|null;
-  if(!body)return NextResponse.json({error:'invalid_data'},{status:400});
-  const rateType=String(body.rateType||'');
-  const baseRate=Number(body.baseRate);
-  const adjustmentPercent=Number(body.adjustmentPercent||0);
-  if (!allowedTypes.has(rateType)||!Number.isFinite(baseRate)||baseRate<0||(rateType==='manual'&&baseRate<=0)||!Number.isFinite(adjustmentPercent)||adjustmentPercent<=-100||adjustmentPercent>500) return NextResponse.json({error:'invalid_data'},{status:400});
+export const PUT=route({access:'manager',body:RateBody,invalidBody:'invalid_data'},async({user,body})=>{
+  const {rateType,baseRate,adjustmentPercent}=body;
   await saveExchangeRateSettings(user.id,{rateType,baseRate,adjustmentPercent});
-  return NextResponse.json({ok:true,effectiveRate:baseRate*(1+adjustmentPercent/100)});
-}
+  return {ok:true,effectiveRate:baseRate*(1+adjustmentPercent/100)};
+});

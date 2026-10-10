@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getMetaAnalyticsData } from '../../../db/database';
 import { analyticsRangeFromUrl } from '../../../lib/analytics-range';
-import { getRentiaUser } from '../../../lib/session';
+import { route } from '../../../server/http/route';
 
 function normalized(data:Awaited<ReturnType<typeof getMetaAnalyticsData>>) {
   const summary={
@@ -21,9 +21,7 @@ function normalized(data:Awaited<ReturnType<typeof getMetaAnalyticsData>>) {
   };
 }
 
-export async function GET(request:Request) {
-  const user=await getRentiaUser();
-  if (!user) return NextResponse.json({error:'unauthorized'},{status:401});
+export const GET=route({},async({user,request})=>{
   const {days,range}=analyticsRangeFromUrl(new URL(request.url));
   return NextResponse.json(normalized(await getMetaAnalyticsData(user.id,days,0,range)));
-}
+});

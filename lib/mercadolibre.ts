@@ -1,5 +1,6 @@
 import {env} from 'cloudflare:workers';
 import {decryptToken,encryptToken} from './token-crypto';
+import {publicOrigin} from './public-origin';
 
 // OAuth infrastructure. Live seller validation remains separate from fixture
 // checks; missing runtime credentials always keep the connection unavailable.
@@ -11,13 +12,7 @@ export const MELI_OAUTH_SECONDS=600;
 type Runtime={MELI_APP_ID?:string;MELI_APP_SECRET?:string;TOKEN_ENCRYPTION_KEY?:string;RENTIA_PUBLIC_ORIGIN?:string};
 export function mercadoLibreRuntime():Runtime { return env as unknown as Runtime; }
 
-export function mercadoLibreOrigin() {
-  const configured=mercadoLibreRuntime().RENTIA_PUBLIC_ORIGIN;
-  if(!configured) throw new Error('mercadolibre_origin_missing');
-  const url=new URL(configured);
-  if(url.protocol!=='https:'||url.username||url.password||url.search||url.hash||url.pathname!=='/') throw new Error('mercadolibre_origin_invalid');
-  return url.origin;
-}
+export function mercadoLibreOrigin() { return publicOrigin(); }
 
 export function mercadoLibreConfigured() {
   const runtime=mercadoLibreRuntime();

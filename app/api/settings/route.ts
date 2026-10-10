@@ -1,34 +1,27 @@
-import { NextResponse } from 'next/server';
-import { getAccount, getSettings, saveChannels, saveCosts, savePagoNubePayoutDays, savePagoNubePlanOverride } from '../../../db/database';
-import { canManageRentia, getRentiaUser } from '../../../lib/session';
+import { z } from 'zod';
+import { getAccount, getSettings, saveChannels, saveCostSettings } from '../../../db/database';
+import { HttpError, route, validate } from '../../../server/http/route';
 
-export async function GET() {
-  const user = await getRentiaUser();
-  if (!user) return NextResponse.json({error:'unauthorized'},{status:401});
-  return NextResponse.json({settings:await getSettings(user.id)});
-}
+const emptyToNull=(value:unknown)=>value===''||value===null||value===undefined?null:value;
+const percent=z.coerce.number().min(0).max(100);
 
-export async function POST(request: Request) {
-  const user = await getRentiaUser();
-  if (!user) return NextResponse.json({error:'unauthorized'},{status:401});
-  if (!canManageRentia(user)) return NextResponse.json({error:'forbidden'},{status:403});
-  if (!await getAccount(user.id)) return NextResponse.json({error:'account_required'},{status:409});
-  const body = await request.json() as {type?:string;channels?:string[];shipping?:string|number;shippingMode?:string;fees?:string|number;taxes?:string|number;pagoNubePayoutDays?:string|number|null;pagoNubePlan?:string|null};
-  if (body.type==='channels') {
-    const allowed = ['tiendanube','mercadolibre'];
-    if (!Array.isArray(body.channels) || body.channels.some(channel=>!allowed.includes(channel))) return NextResponse.json({error:'invalid_channels'},{status:400});
-    await saveChannels(user.id,body.channels);
-  } else if (body.type==='costs') {
-    const shipping = Number(body.shipping);
-    const fees = Number(body.fees);
-    const taxes = Number(body.taxes);
-    const shippingMode=body.shippingMode==='average_only'?'average_only':'actual';
-    const payout=body.pagoNubePayoutDays===null||body.pagoNubePayoutDays===''||body.pagoNubePayoutDays===undefined?null:Number(body.pagoNubePayoutDays);
-    const plan=body.pagoNubePlan||null;
-    if (![shipping,fees,taxes].every(Number.isFinite) || shipping<0 || fees<0 || fees>100 || taxes<0 || taxes>100 || (payout!==null&&![1,7,14].includes(payout)) || (plan!==null&&!['inicial','esencial','impulso','escala'].includes(plan))) return NextResponse.json({error:'invalid_costs'},{status:400});
-    await saveCosts({userId:user.id,shipping:Math.round(shipping),shippingMode,fees,taxes});
-    await savePagoNubePayoutDays(user.id,payout);
-    await savePagoNubePlanOverride(user.id,plan);
-  } else return NextResponse.json({error:'invalid_type'},{status:400});
-  return NextResponse.json({ok:true});
-}
+const ChannelsBody=z.object({channels:z.array(z.enum(['tiendanube','mercadolibre']))});
+
+const CostsBody=z.object({
+  shipping:z.coerce.number().min(0).transform(Math.round),
+  shippingMode:z.enum(['actual','average_only']).catch('actual'),
+  fees:percent,
+  taxes:percent,
+  pagoNubePayoutDays:z.preprocess(value=>{const raw=emptyToNull(value);return raw===null?null:Number(raw);},z.union([z.literal(1),z.literal(7),z.literal(14)]).nullable()),
+  pagoNubePlan:z.preprocess(emptyToNull,z.enum(['inicial','esencial','impulso','escala']).nullable()),
+});
+
+export const GET=route({},async({user})=>({settings:await getSettings(user.id)}));
+
+export const POST=route({access:'manager',body:z.object({type:z.string()}).loose(),invalidBody:'invalid_type'},async({user,body})=>{
+  if (!await getAccount(user.id)) throw new HttpError(409,'account_required');
+  if (body.type==='channels') await saveChannels(user.id,validate(ChannelsBody,body,'invalid_channels').channels);
+  else if (body.type==='costs') await saveCostSettings(user.id,validate(CostsBody,body,'invalid_costs'));
+  else throw new HttpError(400,'invalid_type');
+  return {ok:true};
+});
