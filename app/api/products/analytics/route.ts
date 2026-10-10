@@ -2,14 +2,12 @@ import { NextResponse } from 'next/server';
 import { analyticsWindow, getProductAnalyticsData } from '../../../../db/database';
 import { calculateAdditionalCosts, calculateOrderCosts, type CostRule } from '../../../../lib/cost-engine';
 import { analyticsRangeFromUrl } from '../../../../lib/analytics-range';
-import { getRentiaUser } from '../../../../lib/session';
+import { route } from '../../../../server/http/route';
 
 type CatalogRow={product_id:number;rentia_archived:number;variant_id:number;provider:string;external_product_id:string;external_variant_id:string;sku:string|null;price:number;effective_cost:number;stock:number|null;product_name:string;image_url:string|null;cost_source:string};
 type SaleRow={provider:string;order_cursor:number;order_gross:number;variant_id:number|null;external_order_id:string;quantity:number;unit_price:number;unit_cost:number;order_total:number;currency:string;payment_method:string|null;payment_type:string|null;payment_installments:number|null;source_shipping_cost:number|null;source_commission_cost:number|null;manual_commission_cost:number|null;source_created_at:string};
 
-export async function GET(request:Request) {
-  const user=await getRentiaUser();
-  if (!user) return NextResponse.json({error:'unauthorized'},{status:401});
+export const GET=route({},async({user,request})=>{
   const {days,range}=analyticsRangeFromUrl(new URL(request.url));
   const data=await getProductAnalyticsData(user.id,days,range);
   const catalog=data.catalog as unknown as CatalogRow[];
@@ -58,4 +56,4 @@ export async function GET(request:Request) {
     row.days_stock=row.stock===null||row.sales_per_day<=0?null:Math.max(0,Number(row.stock))/row.sales_per_day;
   }
   return NextResponse.json({days,products:rows});
-}
+});

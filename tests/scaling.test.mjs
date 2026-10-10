@@ -9,7 +9,7 @@ import {DatabaseSync} from 'node:sqlite';
 globalThis.__scalingEnv={DB:null};
 registerHooks({resolve(specifier,context,next){
   if(specifier==='cloudflare:workers')return {url:'data:text/javascript,export const env=globalThis.__scalingEnv;',shortCircuit:true};
-  if(/\/lib\/session$/.test(specifier))return {url:'data:text/javascript,export async function getRentiaUser(){return globalThis.__scalingUser;}',shortCircuit:true};
+  if(/\/lib\/session$/.test(specifier))return {url:'data:text/javascript,export async function getRentiaUser(){return globalThis.__scalingUser;}export function canManageRentia(user){return user.role!=="member";}',shortCircuit:true};
   if(specifier==='next/server')return next('next/server.js',context);
   try{return next(specifier,context);}catch(error){
     if(error.code==='ERR_MODULE_NOT_FOUND'&&specifier.startsWith('.')&&!/\.[a-z]+$/i.test(specifier))return next(`${specifier}.ts`,context);

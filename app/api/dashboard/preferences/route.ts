@@ -1,6 +1,6 @@
-import { NextResponse } from 'next/server';
+import { z } from 'zod';
 import { getDashboardPreferences, saveDashboardPreferences } from '../../../../db/database';
-import { canManageRentia, getRentiaUser } from '../../../../lib/session';
+import { HttpError, route } from '../../../../server/http/route';
 
 const allowedMetrics=new Set(['orders','totalRevenue','netRevenue','profit','margin','aov','adSpend','roas','cpa','productCost','shipping','commissions','externalRevenue','tnOrders','tnRevenue','tnNetRevenue','tnProfit','tnAov','metaSpend','metaRevenue','metaRoas','metaCpa','mlOrders','mlRevenue','mlNetRevenue','mlProfit','mlAov']);
 const allowedChannels=new Set(['combined','tiendanube','meta','mercadolibre','custom']);
@@ -47,22 +47,16 @@ function normalizedLayout(value:unknown) {
   return {version:2,sections,chart:{type:chartType,metric:chartMetric}};
 }
 
-export async function GET() {
-  const user=await getRentiaUser();
-  if (!user) return NextResponse.json({error:'unauthorized'},{status:401});
+export const GET=route({},async({user})=>{
   const stored=await getDashboardPreferences(user.id);
-  if (!stored) return NextResponse.json({layout:null});
-  try { return NextResponse.json({layout:normalizedLayout(JSON.parse(stored.layout_json)),updatedAt:stored.updated_at}); }
-  catch { return NextResponse.json({layout:null}); }
-}
+  if (!stored) return {layout:null};
+  try { return {layout:normalizedLayout(JSON.parse(stored.layout_json)),updatedAt:stored.updated_at}; }
+  catch { return {layout:null}; }
+});
 
-export async function PUT(request:Request) {
-  const user=await getRentiaUser();
-  if (!user) return NextResponse.json({error:'unauthorized'},{status:401});
-  if (!canManageRentia(user)) return NextResponse.json({error:'forbidden'},{status:403});
-  const body=await request.json() as {layout?:unknown};
+export const PUT=route({access:'manager',body:z.object({layout:z.unknown().optional()}),invalidBody:'invalid_layout'},async({user,body})=>{
   const layout=normalizedLayout(body.layout);
-  if (!layout) return NextResponse.json({error:'invalid_layout'},{status:400});
+  if (!layout) throw new HttpError(400,'invalid_layout');
   const updatedAt=await saveDashboardPreferences(user.id,JSON.stringify(layout));
-  return NextResponse.json({ok:true,layout,updatedAt});
-}
+  return {ok:true,layout,updatedAt};
+});

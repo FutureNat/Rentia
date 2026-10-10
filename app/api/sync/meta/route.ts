@@ -1,11 +1,8 @@
-import { NextResponse } from 'next/server';
-import { canManageRentia, getRentiaUser } from '../../../../lib/session';
+import { HttpError, route } from '../../../../server/http/route';
 import { syncMetaAds } from '../../../../lib/meta';
 
-export async function POST() {
-  const user=await getRentiaUser();
-  if (!user) return NextResponse.json({error:'unauthorized'},{status:401});
-  if (!canManageRentia(user)) return NextResponse.json({error:'forbidden'},{status:403});
-  try { return NextResponse.json({ok:true,...await syncMetaAds(user.id)}); }
-  catch (error) { return NextResponse.json({error:error instanceof Error?error.message:'sync_failed'},{status:502}); }
-}
+export const POST=route({access:'manager'},async({user})=>{
+  // The panel shows this message as-is, so the sync error text is kept.
+  try { return {ok:true,...await syncMetaAds(user.id)}; }
+  catch (error) { throw new HttpError(502,error instanceof Error?error.message:'sync_failed'); }
+});

@@ -2,15 +2,13 @@ import {NextResponse} from 'next/server';
 import {analyticsWindow,getAccount,getDashboardData,getIntegrations,getMetaAnalyticsData} from '../../../db/database';
 import type {CostRule} from '../../../lib/cost-engine';
 import {analyticsRangeFromUrl} from '../../../lib/analytics-range';
-import {getRentiaUser} from '../../../lib/session';
+import { route } from '../../../server/http/route';
 import {costSettings} from '../../../lib/order-calculations';
 import {summarizeOrders} from '../../../lib/order-summary';
 import {salesChannels} from '../../../lib/sales-channels';
 import {getMeliAds} from '../../../lib/meli-ads';
 
-export async function GET(request:Request) {
-  const user=await getRentiaUser();
-  if(!user)return NextResponse.json({error:'unauthorized'},{status:401});
+export const GET=route({},async({user,request})=>{
   const url=new URL(request.url),{days,range}=analyticsRangeFromUrl(url);
   const requestedOffset=Number(url.searchParams.get('offset')||0);
   const offset=!range&&Number.isSafeInteger(requestedOffset)&&requestedOffset>=0?requestedOffset:0;
@@ -48,4 +46,4 @@ export async function GET(request:Request) {
   const channels=[...salesChannels(summary.channels,integrations.results).map(row=>row.provider==='mercadolibre'?{...row,profitBeforeAds:row.profit,profit:row.profit===null?null:row.profit-(meliAdsComparable?meliAdSpend:0),adSpend:meliAdsComparable?meliAdSpend:undefined,adsCoverage:meliAdsComparable&&meliAds.coverage.complete}:row),{provider:'external',label:'Facturación externa',orders:externalOrders,revenue:externalRevenue,netRevenue:externalRevenue,profit:null,aov:externalOrders?externalRevenue/externalOrders:0,costCoverage:false}];
   const exchangeRate=data.exchangeRate?{...data.exchangeRate,effective_rate:Number(data.exchangeRate.base_rate||0)*(1+Number(data.exchangeRate.adjustment_percent||0)/100)}:null;
   return NextResponse.json({metrics:{refundLoss,meliAdSpend,totalAdSpend,meliAdsComparable,revenue,externalRevenue,totalRevenue,profitBeforeAds,profit,margin:revenue?profit/revenue*100:0,orders:paidOrders,externalOrders,totalOrders,aov:paidOrders?revenue/paidOrders:0,totalAov:totalOrders?totalRevenue/totalOrders:0,netRevenue,productCost,shipping,commissions,taxes,additional,adSpend,metaReportedRevenue,metaPurchases,reportedRoas:adSpend?metaReportedRevenue/adSpend:0,blendedRoas:totalAdSpend?revenue/totalAdSpend:0,cpa:metaPurchases?adSpend/metaPurchases:0,adSpendComparable,metaCurrency},meliAds,ads:{connected:Boolean(meta.selected),selected:meta.selected,sync:meta.sync},orders:summary.latest,paymentMethods:data.paymentMethods,products:data.products,sync:data.sync,metaTimeline:meta.daily.map(row=>({date:String(row.date),orders:0,storeRevenue:0,externalRevenue:0,profit:0,adSpend:Number(row.spend||0),operatingCosts:0})),timeline:[...timelineMap.values()].sort((a,b)=>a.date.localeCompare(b.date)),channelTimelines:summary.channelTimelines,channels,exchangeRate,quality:summary.quality});
-}
+});

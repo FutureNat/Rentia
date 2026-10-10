@@ -1,18 +1,15 @@
-import { NextResponse } from 'next/server';
+import { z } from 'zod';
 import { saveManualCommission } from '../../../../db/database';
-import { canManageRentia, getRentiaUser } from '../../../../lib/session';
+import { HttpError, route } from '../../../../server/http/route';
+import { field } from '../../../../server/http/fields';
 
-export async function POST(request:Request) {
-  const user=await getRentiaUser();
-  if (!user) return NextResponse.json({error:'unauthorized'},{status:401});
-  if (!canManageRentia(user)) return NextResponse.json({error:'forbidden'},{status:403});
-  let body:{orderId?:unknown;cost?:unknown};
-  try {body=await request.json() as typeof body;} catch {return NextResponse.json({error:'invalid_body'},{status:400});}
-  const orderId=String(body.orderId||'');
-  const cost=body.cost===null?null:Number(body.cost);
-  if (!/^\d{1,20}$/.test(orderId)||cost!==null&&(!Number.isFinite(cost)||cost<0||cost>1000000000)) {
-    return NextResponse.json({error:'invalid_commission'},{status:400});
-  }
-  const saved=await saveManualCommission(user.id,'tiendanube',orderId,cost);
-  return saved?NextResponse.json({ok:true}):NextResponse.json({error:'order_not_found'},{status:404});
-}
+const CommissionBody=z.object({
+  orderId:field(value=>String(value||'')).pipe(z.string().regex(/^\d{1,20}$/)),
+  cost:z.union([z.null(),z.coerce.number().min(0).max(1000000000)]),
+});
+
+export const POST=route({access:'manager',body:CommissionBody,invalidBody:'invalid_commission'},async({user,body})=>{
+  const saved=await saveManualCommission(user.id,'tiendanube',body.orderId,body.cost);
+  if (!saved) throw new HttpError(404,'order_not_found');
+  return {ok:true};
+});

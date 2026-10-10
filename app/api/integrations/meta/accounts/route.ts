@@ -1,21 +1,16 @@
-import { NextResponse } from 'next/server';
+import { z } from 'zod';
 import { getMetaAdAccounts, selectMetaAdAccount } from '../../../../../db/database';
-import { canManageRentia, getRentiaUser } from '../../../../../lib/session';
+import { HttpError, route } from '../../../../../server/http/route';
 import { syncMetaAds } from '../../../../../lib/meta';
 
-export async function GET() {
-  const user=await getRentiaUser();
-  if (!user) return NextResponse.json({error:'unauthorized'},{status:401});
+export const GET=route({},async({user})=>{
   const accounts=await getMetaAdAccounts(user.id);
-  return NextResponse.json({accounts:accounts.results});
-}
+  return {accounts:accounts.results};
+});
 
-export async function PUT(request:Request) {
-  const user=await getRentiaUser();
-  if (!user) return NextResponse.json({error:'unauthorized'},{status:401});
-  if (!canManageRentia(user)) return NextResponse.json({error:'forbidden'},{status:403});
-  const body=await request.json().catch(()=>({})) as {accountId?:string};
-  if (!body.accountId||!await selectMetaAdAccount(user.id,body.accountId)) return NextResponse.json({error:'invalid_account'},{status:400});
-  try { return NextResponse.json({ok:true,...await syncMetaAds(user.id)}); }
-  catch (error) { return NextResponse.json({error:error instanceof Error?error.message:'sync_failed'},{status:502}); }
-}
+export const PUT=route({access:'manager',body:z.object({accountId:z.string().min(1)}),invalidBody:'invalid_account'},async({user,body})=>{
+  if (!await selectMetaAdAccount(user.id,body.accountId)) throw new HttpError(400,'invalid_account');
+  // The panel shows this message as-is, so the sync error text is kept.
+  try { return {ok:true,...await syncMetaAds(user.id)}; }
+  catch (error) { throw new HttpError(502,error instanceof Error?error.message:'sync_failed'); }
+});

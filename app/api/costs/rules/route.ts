@@ -1,46 +1,41 @@
-import { NextResponse } from 'next/server';
+import { z } from 'zod';
 import { createCostRule, deleteCostRule, getCostRules } from '../../../../db/database';
-import { canManageRentia, getRentiaUser } from '../../../../lib/session';
+import { HttpError, route } from '../../../../server/http/route';
+import { field } from '../../../../server/http/fields';
 
-export async function GET() {
-  const user=await getRentiaUser();
-  if (!user) return NextResponse.json({error:'unauthorized'},{status:401});
+const optionalDate=field(value=>value?String(value):null);
+const label=field(value=>String(value||'').trim().slice(0,80));
+
+const RuleBody=z.object({
+  category:z.unknown().optional(),
+  name:label.pipe(z.string().min(1)),
+  matchValue:label,
+  calculation:field(value=>value==='percentage_revenue'?'percentage_revenue' as const:'fixed_monthly' as const),
+  amount:field(value=>Number(value||0)).pipe(z.number().min(0)),
+  percentage:field(value=>Number(value||0)).pipe(z.number().min(0).max(100)),
+  startsAt:optionalDate,
+  endsAt:optionalDate,
+});
+
+export const GET=route({},async({user})=>{
   const rules=await getCostRules(user.id);
-  return NextResponse.json({rules:rules.results});
-}
+  return {rules:rules.results};
+});
 
-export async function POST(request:Request) {
-  const user=await getRentiaUser();
-  if (!user) return NextResponse.json({error:'unauthorized'},{status:401});
-  if (!canManageRentia(user)) return NextResponse.json({error:'forbidden'},{status:403});
-  const body=await request.json() as {category?:string;name?:string;matchValue?:string|null;calculation?:string;amount?:number|string;percentage?:number|string;startsAt?:string|null;endsAt?:string|null};
-  const category=body.category;
-  const name=String(body.name||'').trim().slice(0,80);
-  const amount=Number(body.amount||0);
-  const percentage=Number(body.percentage||0);
-  const startsAt=body.startsAt?String(body.startsAt):null;
-  const endsAt=body.endsAt?String(body.endsAt):null;
-  if (!name||!Number.isFinite(amount)||amount<0||!Number.isFinite(percentage)||percentage<0||percentage>100) return NextResponse.json({error:'invalid_rule'},{status:400});
-  if (startsAt&&endsAt&&startsAt>endsAt) return NextResponse.json({error:'invalid_dates'},{status:400});
-  if (category==='commission') {
-    const matchValue=String(body.matchValue||'').trim().slice(0,80);
-    if (!matchValue||(amount===0&&percentage===0)) return NextResponse.json({error:'invalid_commission'},{status:400});
+export const POST=route({access:'manager',body:RuleBody,invalidBody:'invalid_rule'},async({user,body})=>{
+  const {name,matchValue,calculation,amount,percentage,startsAt,endsAt}=body;
+  if (startsAt&&endsAt&&startsAt>endsAt) throw new HttpError(400,'invalid_dates');
+  if (body.category==='commission') {
+    if (!matchValue||(amount===0&&percentage===0)) throw new HttpError(400,'invalid_commission');
     await createCostRule(user.id,{category:'commission',name,matchValue,calculation:'hybrid',amount,percentage,startsAt:null,endsAt:null});
-  } else if (category==='additional') {
-    const calculation=body.calculation==='percentage_revenue'?'percentage_revenue':'fixed_monthly';
-    if ((calculation==='fixed_monthly'&&amount===0)||(calculation==='percentage_revenue'&&percentage===0)) return NextResponse.json({error:'invalid_additional'},{status:400});
+  } else if (body.category==='additional') {
+    if ((calculation==='fixed_monthly'&&amount===0)||(calculation==='percentage_revenue'&&percentage===0)) throw new HttpError(400,'invalid_additional');
     await createCostRule(user.id,{category:'additional',name,matchValue:null,calculation,amount:calculation==='fixed_monthly'?amount:0,percentage:calculation==='percentage_revenue'?percentage:0,startsAt,endsAt});
-  } else return NextResponse.json({error:'invalid_category'},{status:400});
-  return NextResponse.json({ok:true});
-}
+  } else throw new HttpError(400,'invalid_category');
+  return {ok:true};
+});
 
-export async function DELETE(request:Request) {
-  const user=await getRentiaUser();
-  if (!user) return NextResponse.json({error:'unauthorized'},{status:401});
-  if (!canManageRentia(user)) return NextResponse.json({error:'forbidden'},{status:403});
-  const body=await request.json() as {id?:number};
-  const id=Number(body.id);
-  if (!Number.isInteger(id)||id<=0) return NextResponse.json({error:'invalid_id'},{status:400});
-  await deleteCostRule(user.id,id);
-  return NextResponse.json({ok:true});
-}
+export const DELETE=route({access:'manager',body:z.object({id:z.coerce.number().int().positive()}),invalidBody:'invalid_id'},async({user,body})=>{
+  await deleteCostRule(user.id,body.id);
+  return {ok:true};
+});

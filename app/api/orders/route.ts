@@ -1,12 +1,11 @@
 import {NextResponse} from 'next/server';
 import {analyticsWindow,getOrdersPage,getSettings,getCostRules,getPaidOrderTotals} from '../../../db/database';
 import {analyticsRangeFromUrl} from '../../../lib/analytics-range';
-import {getRentiaUser} from '../../../lib/session';
+import { route } from '../../../server/http/route';
 import {allocateOrderCosts,costSettings,orderCosts} from '../../../lib/order-calculations';
 import {calculateAdditionalCosts,type CostRule} from '../../../lib/cost-engine';
 
-export async function GET(request:Request) {
-  const user=await getRentiaUser();if(!user)return NextResponse.json({error:'unauthorized'},{status:401});
+export const GET=route({},async({user,request})=>{
   const url=new URL(request.url),{days,range}=analyticsRangeFromUrl(url);
   const requested=Number(url.searchParams.get('page')||1);
   if(!Number.isSafeInteger(requested)||requested<1)return NextResponse.json({error:'invalid_page'},{status:400});
@@ -15,4 +14,4 @@ export async function GET(request:Request) {
   const rules=rulesData.results as unknown as CostRule[],config=costSettings(settings as Record<string,unknown>|null);
   const additional=calculateAdditionalCosts(totals.revenue,days,rules,new Date(analyticsWindow(days,0,range).until));
   return NextResponse.json({orders:data.orders.map(order=>allocateOrderCosts(orderCosts(order,config,rules),totals.revenue,totals.orders,additional)),pagination:data.pagination});
-}
+});

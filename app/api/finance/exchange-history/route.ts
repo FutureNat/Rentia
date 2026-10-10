@@ -1,12 +1,11 @@
 import { NextResponse } from 'next/server';
-import { getRentiaUser } from '../../../../lib/session';
+import { route } from '../../../../server/http/route';
 import { fetchRateJson } from '../../../../lib/exchange-rate-provider';
 import { normalizeHistory, rateHouses, type QuotePoint } from '../../../../lib/exchange-rates';
 
 const historyCache=new Map<string,{points:QuotePoint[];fetchedAt:number}>();
 const pending=new Map<string,Promise<QuotePoint[]>>();
-export async function GET(request:Request) {
-  const user=await getRentiaUser();if(!user)return NextResponse.json({error:'unauthorized'},{status:401});
+export const GET=route({},async({request})=>{
   const type=new URL(request.url).searchParams.get('type')||'official';
   if(!Object.hasOwn(rateHouses,type))return NextResponse.json({error:'invalid_reference'},{status:400});
   const house=rateHouses[type as keyof typeof rateHouses];
@@ -27,4 +26,4 @@ export async function GET(request:Request) {
     if(cached)return NextResponse.json({history:cached.points,source:'ArgentinaDatos · DolarApi',reference:type,updatedAt:cached.points.at(-1)?.date||null,fetchedAt:new Date(cached.fetchedAt).toISOString(),status:'cached'},{headers:{'cache-control':'private, no-store'}});
     return NextResponse.json({error:'history_unavailable',history:[]},{status:503});
   }
-}
+});

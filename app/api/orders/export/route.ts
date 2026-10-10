@@ -1,4 +1,4 @@
-import {getRentiaUser} from '../../../../lib/session';
+import { route } from '../../../../server/http/route';
 import {analyticsRangeFromUrl} from '../../../../lib/analytics-range';
 import {analyticsWindow,getSettings,getCostRules,getPaidOrderTotals,iterateAnalyticsOrders} from '../../../../db/database';
 import {allocateOrderCosts,costSettings,orderCosts} from '../../../../lib/order-calculations';
@@ -10,8 +10,7 @@ function csvCell(value:unknown) {
   return `"${text.replaceAll('"','""')}"`;
 }
 
-export async function GET(request:Request) {
-  const user=await getRentiaUser();if(!user)return Response.json({error:'unauthorized'},{status:401});
+export const GET=route({},async({user,request})=>{
   const url=new URL(request.url),{days,range}=analyticsRangeFromUrl(url),query=(url.searchParams.get('q')||'').trim().slice(0,256);
   const [settings,rulesData,totals]=await Promise.all([getSettings(user.id),getCostRules(user.id),getPaidOrderTotals(user.id,days,range)]);
   const config=costSettings(settings as Record<string,unknown>|null),rules=rulesData.results as unknown as CostRule[];
@@ -34,4 +33,4 @@ export async function GET(request:Request) {
     async cancel(){await iterator.return(undefined);},
   });
   return new Response(stream,{headers:{'content-type':'text/csv; charset=utf-8','content-disposition':'attachment; filename="rentia-ordenes.csv"','cache-control':'private, no-store'}});
-}
+});

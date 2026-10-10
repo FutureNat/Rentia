@@ -17,6 +17,7 @@ function load(filename){
   const requireLocal=specifier=>{
     if(specifier==='cloudflare:workers')return {env};
     if(specifier==='next/server')return {NextResponse,after:promise=>lifetimePromises.push(promise)};
+    if(!specifier.startsWith('.'))return require(specifier);
     const resolved=path.resolve(path.dirname(absolute),specifier)+'.ts';
     if(resolved===path.resolve('lib/session.ts'))return {getRentiaUser:async()=>user,canManageRentia:value=>['owner','admin'].includes(value.role)};
     return load(resolved);
@@ -245,7 +246,7 @@ async function main(){
   assert.equal(lifetimePromises.length,0,'rejected requests must not schedule imports');
   const synced=await route.POST(new Request(`${env.RENTIA_PUBLIC_ORIGIN}/api/sync/mercadolibre`,{method:'POST',headers:{origin:env.RENTIA_PUBLIC_ORIGIN}}));
   assert.equal(synced.status,200);assert.equal(lifetimePromises.length,1);await lifetimePromises[0];
-  const view=await (await route.GET()).json();assert.equal(view.orders,1205);assert.ok(!JSON.stringify(view).includes(access));assert.ok(!JSON.stringify(view).includes(refresh));assert.ok(!JSON.stringify(view).includes('state_json'));
+  const view=await (await route.GET(new Request(env.RENTIA_PUBLIC_ORIGIN+'/api/sync/mercadolibre'))).json();assert.equal(view.orders,1205);assert.ok(!JSON.stringify(view).includes(access));assert.ok(!JSON.stringify(view).includes(refresh));assert.ok(!JSON.stringify(view).includes('state_json'));
   assert.equal(view.leaseExpiresAt,0);assert.ok(!JSON.stringify(view).includes('lease_token'));
   await postSaleChecks(settings,mixedSummary,dashboardBody);
   const expiredTokens=await cryptoHelper.encryptToken(JSON.stringify({...stored,expiresAt:Date.now()-1}),env.TOKEN_ENCRYPTION_KEY);

@@ -1,7 +1,8 @@
-import { NextResponse } from 'next/server';
+import { z } from 'zod';
 import { getOrderUsageLast30Days, getOrCreateSubscription, saveRequestedPlan } from '../../../db/database';
 import { getPlan, recommendedPlan, RENTIA_PLANS } from '../../../lib/plans';
-import { canManageRentia, getRentiaUser } from '../../../lib/session';
+import { canManageRentia } from '../../../lib/session';
+import { HttpError, route } from '../../../server/http/route';
 
 function serialize(userId:string,subscription:NonNullable<Awaited<ReturnType<typeof getOrCreateSubscription>>>,orders:number,canManage:boolean) {
   const currentPlan=getPlan(subscription.plan_id);
@@ -28,24 +29,20 @@ function serialize(userId:string,subscription:NonNullable<Awaited<ReturnType<typ
   };
 }
 
-export async function GET() {
-  const user=await getRentiaUser();
-  if (!user) return NextResponse.json({error:'unauthorized'},{status:401});
-  const [subscription,orders]=await Promise.all([getOrCreateSubscription(user.id),getOrderUsageLast30Days(user.id)]);
-  if (!subscription) return NextResponse.json({error:'account_not_found'},{status:404});
-  return NextResponse.json(serialize(user.id,subscription,orders,canManageRentia(user)));
-}
+const PlanBody=z.object({planId:z.unknown().optional(),billingCycle:z.unknown().optional()}).default({});
 
-export async function POST(request:Request) {
-  const user=await getRentiaUser();
-  if (!user) return NextResponse.json({error:'unauthorized'},{status:401});
-  if (!canManageRentia(user)) return NextResponse.json({error:'forbidden'},{status:403});
-  const body=await request.json().catch(()=>({})) as {planId?:string;billingCycle?:string};
+export const GET=route({},async({user})=>{
+  const [subscription,orders]=await Promise.all([getOrCreateSubscription(user.id),getOrderUsageLast30Days(user.id)]);
+  if (!subscription) throw new HttpError(404,'account_not_found');
+  return serialize(user.id,subscription,orders,canManageRentia(user));
+});
+
+export const POST=route({access:'manager',body:PlanBody,invalidBody:'invalid_plan'},async({user,body})=>{
   const plan=RENTIA_PLANS.find(item=>item.id===body.planId);
   const billingCycle=body.billingCycle==='annual'?'annual':'monthly';
-  if (!plan||plan.id==='free') return NextResponse.json({error:'invalid_plan'},{status:400});
+  if (!plan||plan.id==='free') throw new HttpError(400,'invalid_plan');
   const subscription=await saveRequestedPlan(user.id,plan.id,billingCycle);
-  if (!subscription) return NextResponse.json({error:'account_not_found'},{status:404});
+  if (!subscription) throw new HttpError(404,'account_not_found');
   const orders=await getOrderUsageLast30Days(user.id);
-  return NextResponse.json({...serialize(user.id,subscription,orders,true),message:'Plan guardado para el lanzamiento. Todavía no se realizó ningún cobro.'});
-}
+  return {...serialize(user.id,subscription,orders,true),message:'Plan guardado para el lanzamiento. Todavía no se realizó ningún cobro.'};
+});
