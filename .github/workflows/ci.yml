@@ -1,0 +1,31 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          # Tests import .ts files directly and use node:sqlite and module.registerHooks.
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      # The whole project still has lint errors in the panel and landing pages.
+      # Code already cleaned up is linted here so it stays clean.
+      - name: Lint (API and server)
+        run: npx eslint app/api server tests scripts
+      - run: npm test
+      - run: npm run test:integration
+      - run: npm run build
